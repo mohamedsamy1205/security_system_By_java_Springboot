@@ -6,7 +6,6 @@ package com.security.security.jwts;
 import org.springframework.stereotype.Component;
 
 import com.mongodb.Function;
-import com.security.security.model.Users;
 
 import java.security.Key;
 import java.sql.Date;
@@ -18,7 +17,7 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 @Component
 public class JWTUtil {
-    private final String SECRET_KEY = "12345678901234567890123456789012";
+    private final String SECRET_KEY = "12345678901234567890123456789012 Mohamed sa moment";
     private Key getSignInKey() {
         return Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
     }
@@ -68,9 +67,10 @@ public class JWTUtil {
                 .getBody();
         return resolver.apply(claims);
     }
-    public boolean isTokenValid(String token, Users user) {
+
+    public boolean isTokenValid(String token, String userid) {
         String id = extractIdString(token);
-        return (id.equals(user.getId()) && !isTokenExpired(token));
+        return (id.equals(userid) && !isTokenExpired(token));
     }
     private boolean isTokenExpired(String token) {
         return Jwts.parser()

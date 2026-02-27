@@ -1,11 +1,12 @@
 package com.security.security.service;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 // import org.springframework.security.core.Authentication;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 import org.springframework.security.authentication.AuthenticationManager;
 // import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -17,6 +18,7 @@ import com.security.security.jwts.RefreshTokenService;
 import com.security.security.model.RefreshToken;
 import com.security.security.model.Users;
 import com.security.security.repository.UserRepository;
+
 @Service
 public class AuthService {
     @Autowired
@@ -31,26 +33,26 @@ public class AuthService {
     @Autowired
     RefreshTokenService refreshTokenService;
 
-    public ResponseEntity<String> registerUser(Map<String, String> userData) {
+    public Map<String, Object> registerUser(Map<String, String> userData) {
         String username = userData.get("username");
         String email = userData.get("email");
         String password = userData.get("password");
         String role = userData.get("role");
 
         if (username == null || username.isBlank())
-            return ResponseEntity.badRequest().body("Username is required");
+            throw new RuntimeException("Username is required");
         if (email == null || email.isBlank() || !email.matches("^[A-Za-z0-9+_.-]+@(.+)$"))
-            return ResponseEntity.badRequest().body("Invalid email format");
+            throw new RuntimeException("Invalid email format");
         if (password == null || password.isBlank())
-            return ResponseEntity.badRequest().body("Password is required");
+            throw new RuntimeException("Password is required");
         if (!password.matches("^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!]).{8,}$"))
-            return ResponseEntity.badRequest().body("Weak password");
+            throw new RuntimeException("Weak password");
         if (userRepository.existsByEmail(email))
-            return ResponseEntity.badRequest().body("Email already registered");
+            throw new RuntimeException("Email already registered");
         if (userRepository.existsByUsername(username))
-            return ResponseEntity.badRequest().body("Username already taken");
+            throw new RuntimeException("Username already taken");
         if (!List.of("USER", "ADMIN").contains(role))
-            return ResponseEntity.badRequest().body("Invalid role");
+            throw new RuntimeException("Invalid role");
 
         userRepository.save(Users.builder()
                 .username(username)
@@ -60,32 +62,71 @@ public class AuthService {
                 .isActivated(false)
                 .build());
 
-        return ResponseEntity.ok("User registered successfully");
+        return loginUser(Map.of("username", username, "password", password));
     }
 
-    public ResponseEntity<?> loginUser (Map<String, String> loginData) {
+    public Map<String, Object> loginUser(Map<String, String> loginData) {
         String username = loginData.get("username");
         String password = loginData.get("password");
 
         if (username == null || username.isBlank())
-            return ResponseEntity.badRequest().body("Username is required");
+            throw new RuntimeException("Username is required");
         if (password == null || password.isBlank())
-            return ResponseEntity.badRequest().body("Password is required");
+            throw new RuntimeException("Password is required");
 
         // Additional login logic would go here
-        Users user = userRepository.findByUsername(username).orElseThrow(() -> 
-            new RuntimeException("User not found"));
+        Users user = userRepository.findByUsername(username).orElseThrow(() -> new RuntimeException("User not found"));
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
-            return ResponseEntity.badRequest().body("Invalid username or password");
+            throw new RuntimeException("Invalid username or password");
         }
 
         String accessToken = jwtUtil.generateToken(Map.of("id", user.getId(), "role", user.getRole()));
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getId());
-        return ResponseEntity.ok(Map.of(
-            "accessToken",accessToken,
-            "refreshToken",refreshToken.getToken()
-        ));
+
+        ResponseCookie cookie = ResponseCookie
+                .from("refreshToken", refreshToken.getToken())
+                .httpOnly(true)
+                .secure(false)
+                .sameSite("Lax")
+                .path("/")
+                .maxAge(Duration.ofDays(180))
+                .build();
+        return Map.of(
+                "accessToken", accessToken,
+                "cookie", cookie
+
+        );
+    }
+
+    public Map<String, String> refresh(String refreshToken) {
+        String newAccessToken = null;
+
+        try {
+            String userId = jwtUtil.extractIdString(refreshToken);
+            Users user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            newAccessToken = jwtUtil.generateToken(Map.of(
+                    "id", user.getId().toString(),
+                    "role", user.getRole()));
+            // try{
+            // RefreshToken storedToken = refreshTokenRepository.findByUserId(userId)
+            // .orElseThrow(() -> new RuntimeException("Refresh token not found"));
+            // storedToken.setRefresh(jwtUtil.generateRefreshToken(userId));
+            // storedToken.setExpireAt(System.currentTimeMillis() + 1000L * 60 * 60 * 24 *
+            // 30 * 6);
+            // refreshTokenRepository.save(storedToken);
+            // }catch(Exception e){
+            // throw new RuntimeException("Refresh token not found: " + e.getMessage());
+            // }
+
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid refresh token: " + e.getMessage());
+        }
+
+        return Map.of("accessToken", newAccessToken);
+
+        // throw new RuntimeException("User not found");
     }
 
 
