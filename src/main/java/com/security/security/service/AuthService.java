@@ -35,20 +35,16 @@ public class AuthService {
 
     public Map<String, Object> registerUser(Map<String, String> userData) {
         String username = userData.get("username");
-        String email = userData.get("email");
+
         String password = userData.get("password");
         String role = userData.get("role");
 
         if (username == null || username.isBlank())
             throw new RuntimeException("Username is required");
-        if (email == null || email.isBlank() || !email.matches("^[A-Za-z0-9+_.-]+@(.+)$"))
-            throw new RuntimeException("Invalid email format");
         if (password == null || password.isBlank())
             throw new RuntimeException("Password is required");
         if (!password.matches("^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!]).{8,}$"))
             throw new RuntimeException("Weak password");
-        if (userRepository.existsByEmail(email))
-            throw new RuntimeException("Email already registered");
         if (userRepository.existsByUsername(username))
             throw new RuntimeException("Username already taken");
         if (!List.of("USER", "ADMIN").contains(role))
@@ -56,7 +52,6 @@ public class AuthService {
 
         userRepository.save(Users.builder()
                 .username(username)
-                .email(email)
                 .password(passwordEncoder.encode(password))
                 .role(role)
                 .isActivated(false)
@@ -92,6 +87,7 @@ public class AuthService {
                 .path("/")
                 .maxAge(Duration.ofDays(180))
                 .build();
+
         return Map.of(
                 "accessToken", accessToken,
                 "cookie", cookie
